@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Request, Response
-from validators.shortner_validators import CreateShortURLValidator
+from validators.shortner_validators import (
+    CreateShortURLValidator,
+    RedirectedShortURLValidator,
+)
 from pydantic import ValidationError
 import string
 import random
 from utils.redis_client import redis_client
+from fastapi.responses import RedirectResponse
 
 router = APIRouter()
 
@@ -128,6 +132,41 @@ async def delete_short_url(request: Request, response: Response):
 
         response.status_code = 200
         return {"status": "success", "message": "Shortened URL has been deleted."}
+
+    except Exception:
+        response.status_code = 500
+        return {"status": "error", "message": "Something went wrong."}
+
+
+# api route controller function used for redirecting the user to their requested shortened url
+@router.post("/shortner/{shortened_url}")
+async def redirected_short_url(shortened_url, response: Response):
+    try:
+        # validate the request url path parameter of shortened url
+        validated_req_url_parameter = RedirectedShortURLValidator(
+            shortened_url=shortened_url
+        )
+
+    except ValidationError as e:
+        response.status_code = 400
+        return {
+            "status": "error",
+            "message": "Failed in type validation.",
+            "errors": e.errors(),
+        }
+
+    try:
+        # check if there exists any key in the redis database using the path provided key
+        for key in redis_client.scan_iter("*"):
+            value = redis_client.get(key)
+        if value == validated_req_url_parameter.shortened_url:
+            return RedirectResponse(url=key, status_code=302)
+
+        response.status_code = 404
+        return {
+            "status": "error",
+            "message": "This shortened URL is invalid or is not found.",
+        }
 
     except Exception:
         response.status_code = 500
