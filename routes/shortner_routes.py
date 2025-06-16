@@ -82,7 +82,7 @@ async def get_short_url(request: Request, response: Response):
     try:
         # retrieve the shortened url in the redis database if not exists send back error message
         check_shortened_url_exists = redis_client.get(validated_req_body.url)
-        
+
         if check_shortened_url_exists == None:
             response.status_code = 404
             return {"status": "error", "message": "Shortened URL was not found."}
@@ -93,6 +93,42 @@ async def get_short_url(request: Request, response: Response):
             "message": "Shortened URL was found.",
             "data": {"shortened_url": f"http://8000/{check_shortened_url_exists}"},
         }
+    except Exception:
+        response.status_code = 500
+        return {"status": "error", "message": "Something went wrong."}
+
+
+# api route controller function for implimenting deletion of a url key in the memory database
+@router.delete("/shortner/")
+async def delete_short_url(request: Request, response: Response):
+    # get hold of the url that is inside the request object
+    req_body = await request.json()
+
+    try:
+        # validate the request body send error message to client
+        validated_req_body = CreateShortURLValidator(url=req_body.get("url").strip())
+    except ValidationError as e:
+        response.status_code = 400
+        return {
+            "status": "error",
+            "message": "Failed in type validation.",
+            "errors": e.errors(),
+        }
+
+    try:
+        # check if the key using the provided url exists in redis database
+        check_url_key_exists = redis_client.get(validated_req_body.url)
+
+        if check_url_key_exists == None:
+            response.status_code = 404
+            return {"status": "error", "message": "Shortened URL doesn't exist."}
+
+        # delete the key from the redis database
+        check_url_key_exists = redis_client.delete(validated_req_body.url)
+
+        response.status_code = 200
+        return {"status": "success", "message": "Shortened URL has been deleted."}
+
     except Exception:
         response.status_code = 500
         return {"status": "error", "message": "Something went wrong."}
